@@ -373,10 +373,13 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
   </div>
   <div class="top-actions">
     <span class="pill"><span class="dot"></span><span id="dataStatus">Master data: default</span></span>
+    <span class="pill small" id="cloudStatusPill">☁ Cloud sync: belum diatur</span>
     <div class="theme-toggle" id="themeToggle">
       <button type="button" data-theme="dark" class="active">🌙 Dark</button>
       <button type="button" data-theme="light">☀️ Light</button>
     </div>
+    <button class="btn secondary" id="openSettingsBtn">⚙ Settings</button>
+    <button class="btn secondary" id="refreshCloudBtn">🔄 Refresh</button>
     <button class="btn secondary" id="openUploadBtn">⇪ Upload Master File</button>
     <button class="btn secondary" id="logoutBtn">Keluar</button>
   </div>
@@ -669,11 +672,28 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
 
 <footer>RETAIL PERFORMANCE HUB · Local dashboard — data diproses 100% di browser Anda, tidak dikirim ke server manapun.</footer>
 
+<!-- Settings modal (Cloud sync URL) -->
+<div class="modal-bg" id="settingsModal">
+  <div class="modal">
+    <h2>⚙ Settings — Sinkronisasi Tim</h2>
+    <p>Tempel <b>Web App URL</b> dari Google Apps Script Anda di sini agar upload master file otomatis tersimpan ke Google Sheet bersama, dan semua orang yang buka dashboard ini (dengan URL yang sama tersimpan) akan otomatis melihat data terbaru. Lihat panduan setup terpisah untuk cara mendapatkan URL ini.</p>
+    <div class="login-field">
+      <label>Google Apps Script Web App URL</label>
+      <input type="text" id="cloudUrlInput" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    </div>
+    <div class="status-msg" id="settingsStatus"></div>
+    <div class="modal-actions">
+      <button class="btn secondary" id="closeSettingsBtn">Tutup</button>
+      <button class="btn" id="saveSettingsBtn">Simpan &amp; Tes Koneksi</button>
+    </div>
+  </div>
+</div>
+
 <!-- Upload modal -->
 <div class="modal-bg" id="uploadModal">
   <div class="modal">
     <h2>Upload Master File Baru</h2>
-    <p>Upload file .xlsx terbaru (dengan sheet <b>Open Studio</b>, <b>EMS</b>, <b>PnR</b>) untuk <b>menggantikan</b> seluruh data yang ada saat ini (tidak akumulatif).</p>
+    <p>Upload file .xlsx terbaru (dengan sheet <b>Open Studio</b>, <b>EMS</b>, <b>PnR</b>) untuk <b>menggantikan</b> seluruh data yang ada saat ini (tidak akumulatif). Jika URL cloud sudah diatur di ⚙ Settings, data juga otomatis dikirim ke Google Sheet bersama agar tim ikut ter-update.</p>
     <div class="drop-zone" id="dropZone">
       <div class="icon">📄</div>
       <p><b>Klik untuk pilih file</b> atau drag &amp; drop .xlsx di sini</p>
@@ -1551,11 +1571,8 @@ function buildDict(){
 }
 function normSession(s){ s=(s||'').toString().trim(); if(s.split(':').length===3) s=s.split(':').slice(0,2).join(':'); return s; }
 
-function parseOpsSheet(wb){
-  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('open studio')||n.toLowerCase()==='ops');
-  if(!sheetName) return null;
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
-  if(rows.length<2) return {store:[],staff:[],topic:[],session:[],rows:[]};
+function parseOpsRows(rows){
+  if(!rows || rows.length<2) return {store:[],staff:[],topic:[],session:[],rows:[]};
   const headers = rows[0];
   const idxName = findCol(headers, ['presenter','nama staff','staff name','nama']);
   const idxDate = findCol(headers, ['tanggal']);
@@ -1581,12 +1598,15 @@ function parseOpsSheet(wb){
   }
   return { staff:gStaff.order, store:gStore.order, topic:gTopic.order, session:gSess.order, rows: outRows };
 }
-
-function parseEmsSheet(wb){
-  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('ems'));
+function parseOpsSheet(wb){
+  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('open studio')||n.toLowerCase()==='ops');
   if(!sheetName) return null;
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
-  if(rows.length<2) return {store:[],trainer:[],participant:[],topic:[],session:[],rows:[]};
+  return Object.assign(parseOpsRows(rows), {_rawRows: rows});
+}
+
+function parseEmsRows(rows){
+  if(!rows || rows.length<2) return {store:[],trainer:[],participant:[],topic:[],session:[],rows:[]};
   const headers = rows[0];
   const idxTs = findCol(headers, ['timestamp']);
   const idxStore = findCol(headers, ['store']);
@@ -1618,12 +1638,15 @@ function parseEmsSheet(wb){
   }
   return { store:gStore.order, trainer:gTrainer.order, participant:gPart.order, topic:gTopic.order, session:gSess.order, rows: outRows };
 }
-
-function parsePnrSheet(wb){
-  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('pnr')||n.toLowerCase().includes('p&r')||n.toLowerCase().includes('p and r'));
+function parseEmsSheet(wb){
+  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('ems'));
   if(!sheetName) return null;
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
-  if(rows.length<2) return {store:[],trainer:[],participant:[],module:[],category:[],type:[],status:[],rows:[]};
+  return Object.assign(parseEmsRows(rows), {_rawRows: rows});
+}
+
+function parsePnrRows(rows){
+  if(!rows || rows.length<2) return {store:[],trainer:[],participant:[],module:[],category:[],type:[],status:[],rows:[]};
   const headers = rows[0];
   const idxTs = findCol(headers, ['timestamp']);
   const idxStore = findCol(headers, ['location']);
@@ -1669,6 +1692,104 @@ function parsePnrSheet(wb){
   }
   return { store:gStore.order, trainer:gTrainer.order, participant:gPart.order, module:gModule.order, category:gCat.order, type:gType.order, status:gStatus.order, rows: outRows };
 }
+function parsePnrSheet(wb){
+  const sheetName = wb.SheetNames.find(n=>n.toLowerCase().includes('pnr')||n.toLowerCase().includes('p&r')||n.toLowerCase().includes('p and r'));
+  if(!sheetName) return null;
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, raw:true, defval:null});
+  return Object.assign(parsePnrRows(rows), {_rawRows: rows});
+}
+
+/* ================= Cloud sync (Google Apps Script + Google Sheet) ================= */
+const CLOUD_URL_KEY = 'rph_cloud_url';
+function getCloudUrl(){ try{ return localStorage.getItem(CLOUD_URL_KEY) || ''; }catch(e){ return ''; } }
+function setCloudUrl(url){ try{ localStorage.setItem(CLOUD_URL_KEY, url); }catch(e){} }
+
+function updateCloudStatusPill(){
+  const url = getCloudUrl();
+  const pill = el('cloudStatusPill');
+  if(!pill) return;
+  pill.textContent = url ? '☁ Cloud sync: aktif' : '☁ Cloud sync: belum diatur';
+  pill.style.color = url ? 'var(--green)' : 'var(--muted)';
+}
+
+async function fetchFromCloud(silent){
+  const url = getCloudUrl();
+  if(!url) return false;
+  try{
+    if(!silent){ el('dataStatus').textContent = 'Mengambil data terbaru dari Google Sheet…'; }
+    const res = await fetch(url, {method:'GET'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const json = await res.json();
+    let applied = false;
+    if(json.ops && json.ops.length>1){ const d = parseOpsRows(json.ops); if(d.rows.length){ RAW_OPS = d; lsSet('ops', JSON.stringify(d)); applied = true; } }
+    if(json.ems && json.ems.length>1){ const d = parseEmsRows(json.ems); if(d.rows.length){ RAW_EMS = d; lsSet('ems', JSON.stringify(d)); applied = true; } }
+    if(json.pnr && json.pnr.length>1){ const d = parsePnrRows(json.pnr); if(d.rows.length){ RAW_PNR = d; lsSet('pnr', JSON.stringify(d)); applied = true; } }
+    if(applied){
+      META = {source:'cloud', filename:null, uploadedAt: json.meta && json.meta.lastUpdated ? json.meta.lastUpdated : new Date().toISOString()};
+      lsSet('meta', JSON.stringify(META));
+      rebuildOps(); rebuildEms(); rebuildPnr();
+      populateOpsFilters(); populateEmsFilters(); populatePnrFilters(); populateTrainerFilters();
+      renderOpsAll(); renderEmsAll(); renderPnrAll(); renderTrainerSummary();
+    }
+    updateDataStatus();
+    return applied;
+  }catch(err){
+    console.warn('Cloud fetch failed:', err);
+    updateDataStatus();
+    return false;
+  }
+}
+
+async function postToCloud(payload){
+  const url = getCloudUrl();
+  if(!url) return {ok:false, reason:'no-url'};
+  try{
+    await fetch(url, {
+      method:'POST',
+      mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(payload)
+    });
+    // no-cors responses are opaque; assume success and re-fetch to confirm & sync everyone's view
+    return {ok:true};
+  }catch(err){
+    console.warn('Cloud post failed:', err);
+    return {ok:false, reason:err.message};
+  }
+}
+
+/* ================= Settings modal (Cloud URL) ================= */
+const settingsModal = el('settingsModal');
+el('openSettingsBtn').addEventListener('click', ()=>{
+  el('cloudUrlInput').value = getCloudUrl();
+  settingsModal.classList.add('show');
+});
+el('closeSettingsBtn').addEventListener('click', ()=>settingsModal.classList.remove('show'));
+el('saveSettingsBtn').addEventListener('click', async ()=>{
+  const url = el('cloudUrlInput').value.trim();
+  setCloudUrl(url);
+  updateCloudStatusPill();
+  const msgEl = el('settingsStatus');
+  if(!url){ msgEl.className='status-msg show ok'; msgEl.textContent='URL cloud dikosongkan — dashboard kembali mode lokal saja.'; return; }
+  msgEl.className='status-msg show'; msgEl.textContent='Menguji koneksi…';
+  const ok = await fetchFromCloud(true);
+  if(ok){ msgEl.className='status-msg show ok'; msgEl.textContent='Berhasil tersambung & data ter-update dari Google Sheet!'; }
+  else { msgEl.className='status-msg show err'; msgEl.textContent='Tersimpan, tapi belum bisa mengambil data (cek URL / pastikan sheet belum pernah diisi data). Coba lagi nanti.'; }
+});
+
+el('refreshCloudBtn').addEventListener('click', async ()=>{
+  const btn = el('refreshCloudBtn');
+  const original = btn.textContent;
+  if(!getCloudUrl()){
+    btn.textContent = 'Cloud belum diatur';
+    setTimeout(()=>{ btn.textContent = original; }, 1800);
+    return;
+  }
+  btn.textContent = '🔄 Menyegarkan…';
+  const ok = await fetchFromCloud(false);
+  btn.textContent = ok ? '✅ Ter-update' : '⚠️ Gagal, coba lagi';
+  setTimeout(()=>{ btn.textContent = original; }, 1800);
+});
 
 function handleFile(file){
   const statusEl = el('uploadStatus');
@@ -1676,7 +1797,7 @@ function handleFile(file){
   statusEl.className='status-msg show'; statusEl.textContent='Memproses file...';
   sheetStatusEl.innerHTML = '';
   const reader = new FileReader();
-  reader.onload = (e)=>{
+  reader.onload = async (e)=>{
     try{
       const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
       const opsData = parseOpsSheet(wb);
@@ -1701,9 +1822,27 @@ function handleFile(file){
       renderOpsAll(); renderEmsAll(); renderPnrAll(); renderTrainerSummary();
       updateDataStatus();
 
-      statusEl.className='status-msg show ok';
-      statusEl.textContent = `Berhasil! Data dari "${file.name}" menggantikan data sebelumnya.`;
-      setTimeout(()=>modal.classList.remove('show'), 1600);
+      const cloudUrl = getCloudUrl();
+      if(cloudUrl){
+        statusEl.className='status-msg show'; statusEl.textContent='Data lokal ter-update. Mengirim ke Google Sheet agar tim ikut ter-update…';
+        const payload = {
+          ops: opsData ? opsData._rawRows : null,
+          ems: emsData ? emsData._rawRows : null,
+          pnr: pnrData ? pnrData._rawRows : null,
+        };
+        const result = await postToCloud(payload);
+        if(result.ok){
+          statusEl.className='status-msg show ok';
+          statusEl.textContent = `Berhasil! Data dari "${file.name}" dikirim ke Google Sheet — tim Anda akan melihat data terbaru saat refresh dashboard.`;
+        } else {
+          statusEl.className='status-msg show err';
+          statusEl.textContent = `Data lokal ter-update, tapi gagal mengirim ke cloud (${result.reason}). Cek koneksi/URL di ⚙ Settings.`;
+        }
+      } else {
+        statusEl.className='status-msg show ok';
+        statusEl.textContent = `Berhasil! Data dari "${file.name}" menggantikan data sebelumnya (mode lokal — set ⚙ Settings untuk sinkron ke tim).`;
+      }
+      setTimeout(()=>modal.classList.remove('show'), 2200);
     }catch(err){
       statusEl.className='status-msg show err';
       statusEl.textContent = 'Gagal memproses file: ' + err.message;
@@ -1729,9 +1868,13 @@ function updateDataStatus(){
   if(META.source==='upload'){
     const d = new Date(META.uploadedAt);
     elx.textContent = `Master data: ${META.filename} · diupload ${d.toLocaleString('id-ID')}`;
+  } else if(META.source==='cloud'){
+    const d = new Date(META.uploadedAt);
+    elx.textContent = `Master data: dari Google Sheet · sync ${d.toLocaleString('id-ID')}`;
   } else {
     elx.textContent = `Master data: default`;
   }
+  updateCloudStatusPill();
 }
 
 /* ================= Init ================= */
@@ -1742,6 +1885,9 @@ rebuildOps(); rebuildEms(); rebuildPnr();
 populateOpsFilters(); populateEmsFilters(); populatePnrFilters(); populateTrainerFilters();
 updateDataStatus();
 renderOpsAll(); renderEmsAll(); renderPnrAll(); renderTrainerSummary();
+/* Non-blocking: if a cloud URL is configured, fetch the latest shared data
+   in the background and upgrade the view once it arrives. */
+fetchFromCloud(true);
 </script>
 
 </body>
