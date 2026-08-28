@@ -10,14 +10,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root{
-  --bg:#0a0a0c; --panel:#131316; --panel-2:#1a1a1f; --border:#2a2a30;
+  --bg:#0a0a0c; --bg-rgb:10,10,12; --panel:#131316; --panel-2:#1a1a1f; --border:#2a2a30;
   --gold:#f5a623; --teal:#2dd4bf; --indigo:#7c6cff; --blue:#4da3ff; --rose:#ff6b9d;
   --red:#ff5c5c; --green:#4ade80; --yellow:#ffcc4d;
   --text:#f2f2f0; --muted:#9a9aa2; --muted-2:#6b6b72;
   --shadow: 0 8px 30px rgba(0,0,0,0.35);
 }
 html[data-theme="light"]{
-  --bg:#f4f4f6; --panel:#ffffff; --panel-2:#f3f3f5; --border:#e2e2e7;
+  --bg:#f4f4f6; --bg-rgb:244,244,246; --panel:#ffffff; --panel-2:#f3f3f5; --border:#e2e2e7;
   --text:#17171a; --muted:#63636b; --muted-2:#8c8c94;
   --shadow: 0 8px 24px rgba(20,20,30,0.08);
 }
@@ -88,7 +88,7 @@ a{color:inherit;}
 header.top{
   padding:22px 36px 16px 36px; border-bottom:1px solid var(--border);
   display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;
-  position:sticky; top:0; z-index:30; background:rgba(10,10,12,0.95); backdrop-filter:blur(10px);
+  position:sticky; top:0; z-index:30; background:rgba(var(--bg-rgb),0.95); backdrop-filter:blur(10px);
 }
 .brand{display:flex; align-items:center; gap:14px;}
 .rig{width:40px;height:40px;flex-shrink:0;}
@@ -111,7 +111,7 @@ button.btn.secondary:hover{border-color:var(--gold); color:var(--gold);}
 /* ---------- Module tabs ---------- */
 .module-tabs{
   display:flex; gap:8px; padding:14px 36px; border-bottom:1px solid var(--border);
-  position:sticky; top:73px; z-index:29; background:rgba(10,10,12,0.92); backdrop-filter:blur(10px);
+  position:sticky; top:73px; z-index:29; background:rgba(var(--bg-rgb),0.92); backdrop-filter:blur(10px);
   flex-wrap:wrap;
 }
 .mtab{
@@ -420,6 +420,7 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
 
   <div class="kpi-row" id="ops_kpiRow"></div>
 
+  <div id="ops_storeRankSection">
   <div class="section-title"><span class="n">1</span> Target vs Pencapaian per Store <span style="font-weight:400;font-size:11px;color:var(--muted);">(Target: 82 sesi/bulan/store)</span></div>
   <div class="section-sub">Ranking store dari pencapaian tertinggi ke terendah. Gunakan filter kategori untuk menyaring.</div>
   <div class="panel">
@@ -442,6 +443,7 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
         <tbody id="ops_storeRankBody"></tbody>
       </table>
     </div>
+  </div>
   </div>
 
   <div class="section-title"><span class="n">2</span> Ranking Staff — Paling Sedikit Open Studio</div>
@@ -604,7 +606,7 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
     </div>
     <div class="panel">
       <h2>Summary Comment Bulanan</h2>
-      <div class="sub">Ringkasan otomatis performa trainer per bulan (mengikuti filter Trainer)</div>
+      <div class="sub">Kumpulan catatan/comment dari setiap sesi, dikelompokkan per peserta per bulan (mengikuti filter Trainer) — untuk melihat kekurangan tiap staff</div>
       <div class="scroll-y" id="pnr_monthlySummary"></div>
     </div>
   </div>
@@ -972,6 +974,9 @@ function computeOpsStoreRank(recs){
   return list;
 }
 function renderOpsStoreRank(recs){
+  const section = el('ops_storeRankSection');
+  if(opsState.store){ section.style.display='none'; return; }
+  section.style.display='';
   let list = computeOpsStoreRank(recs);
   const acc = (row,key)=> key==='rank'?row.sessions:row[key];
   list = sortRows(list, ops_storeRankSort.key==='rank'?'pct':ops_storeRankSort.key, ops_storeRankSort.dir, acc);
@@ -1017,7 +1022,8 @@ function renderOpsActionPlan(recs){
   const storeGroups={};
   list.forEach(s=>{ (storeGroups[s.store]=storeGroups[s.store]||[]).push(s); });
   const grid = el('ops_actionPlanGrid');
-  const cards = ops.stores.map(store=>{
+  const storesInScope = opsState.store ? [opsState.store] : ops.stores;
+  const cards = storesInScope.map(store=>{
     const arr = storeGroups[store]||[];
     const sessions = byStore[store]||0;
     const pct = (sessions/OPS_TARGET_PER_STORE)*100;
@@ -1347,30 +1353,25 @@ function renderPnrComments(recs){
 }
 
 function renderPnrMonthlySummary(){
-  const recs = pnrTrendScopedRecords();
+  const recs = pnrFilteredRecords().filter(r=>r.comment);
   const byMonth = {};
   recs.forEach(r=>{
     const m = r.date.slice(0,7);
-    if(!byMonth[m]) byMonth[m]={target:0,delivered:0,preSum:0,preN:0,postSum:0,postN:0};
-    const b = byMonth[m];
-    if(r.status==='Planning') b.target+=1;
-    else if(r.status==='Delivered'){ b.delivered+=1; if(r.preScore){b.preSum+=r.preScore;b.preN+=1;} if(r.postScore){b.postSum+=r.postScore;b.postN+=1;} }
+    if(!byMonth[m]) byMonth[m] = {};
+    const key = r.participant || '(Tanpa nama peserta)';
+    (byMonth[m][key] = byMonth[m][key] || []).push(r);
   });
   const months = Object.keys(byMonth).sort().reverse();
   const listEl = el('pnr_monthlySummary');
-  if(months.length===0){ listEl.innerHTML='<div class="detail-empty">Tidak ada data.</div>'; return; }
-  const who = pnrState.trainer || 'Semua Trainer';
+  if(months.length===0){ listEl.innerHTML='<div class="detail-empty">Tidak ada komentar untuk filter ini.</div>'; return; }
   listEl.innerHTML = months.map(m=>{
-    const b = byMonth[m];
-    const pct = b.target>0 ? (b.delivered/b.target)*100 : 0;
-    const avgPre = b.preN? (b.preSum/b.preN) : null;
-    const avgPost = b.postN? (b.postSum/b.postN) : null;
-    let scoreTxt = '';
-    if(avgPre!=null && avgPost!=null){
-      const delta = avgPost - avgPre;
-      scoreTxt = ` Rata-rata quiz score naik dari ${avgPre.toFixed(0)} (pre) ke ${avgPost.toFixed(0)} (post), ${delta>=0?'peningkatan':'penurunan'} ${Math.abs(delta).toFixed(0)} poin.`;
-    }
-    return `<div class="comment-card"><div class="meta"><b>${monthLabel(m)}</b> · ${who}</div><div class="txt">${b.delivered} dari ${b.target} training terlaksana (${fmtPct(pct)}).${scoreTxt}</div></div>`;
+    const participants = Object.keys(byMonth[m]).sort((a,b)=>a.localeCompare(b));
+    const block = participants.map(p=>{
+      const entries = byMonth[m][p].sort((a,b)=>a.date.localeCompare(b.date));
+      const items = entries.map(r=>`<div style="margin-top:4px;padding-left:10px;border-left:2px solid var(--border);"><div style="color:var(--muted);font-size:10.5px;font-family:'IBM Plex Mono',monospace;">${r.date} · ${r.store||'-'} · ${r.module}</div><div class="txt">${r.comment}</div></div>`).join('');
+      return `<div style="margin-bottom:14px;"><div style="font-weight:600;font-size:12.5px;margin-bottom:2px;color:var(--text);">👤 ${p}</div>${items}</div>`;
+    }).join('');
+    return `<div class="comment-card" style="border-left:3px solid var(--indigo);"><div class="meta"><b>${monthLabel(m)}</b> · ${participants.length} peserta dengan catatan</div>${block}</div>`;
   }).join('');
 }
 
