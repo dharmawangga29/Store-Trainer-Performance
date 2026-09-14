@@ -464,6 +464,17 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
   <div class="section-sub">Pilih Store dan/atau Staff pada filter di atas untuk melihat rincian per sesi.</div>
   <div class="panel"><div id="ops_drilldownArea"><div class="detail-empty">Pilih Store atau Staff pada filter di atas.</div></div></div>
 
+  <div class="section-title"><span class="n">5</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ops_weeklyScope">Semua Store</span></div>
+  <div class="section-sub">Mengikuti filter Store/Staff/Bulan/Tanggal di atas — kosongkan filter Store untuk melihat total semua toko, atau pilih 1 store untuk melihat tren mingguannya.</div>
+  <div class="panel">
+    <div class="scroll-y">
+      <table id="ops_weeklyTable">
+        <thead><tr><th>Minggu</th><th>Sesi</th><th>Participant</th><th>Unit Terjual</th><th>vs Minggu Lalu</th></tr></thead>
+        <tbody id="ops_weeklyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <!-- ======================= EMS MODULE ======================= -->
@@ -520,6 +531,17 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
   <div class="section-title"><span class="n">3</span> Drilldown Trainer / Store</div>
   <div class="section-sub">Pilih Store dan/atau Trainer pada filter di atas untuk melihat rincian sesi.</div>
   <div class="panel"><div id="ems_drilldownArea"><div class="detail-empty">Pilih Store atau Trainer pada filter di atas.</div></div></div>
+
+  <div class="section-title"><span class="n">4</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ems_weeklyScope">Semua Store</span></div>
+  <div class="section-sub">Mengikuti filter Store/Trainer/Bulan/Tanggal di atas — kosongkan filter Store untuk melihat total semua toko, atau pilih 1 store untuk melihat tren mingguannya.</div>
+  <div class="panel">
+    <div class="scroll-y">
+      <table id="ems_weeklyTable">
+        <thead><tr><th>Minggu</th><th>Submission</th><th>Avg Score</th><th>Staff Unik</th><th>vs Minggu Lalu</th></tr></thead>
+        <tbody id="ems_weeklyBody"></tbody>
+      </table>
+    </div>
+  </div>
 
 </div>
 
@@ -805,6 +827,58 @@ function loadInitialData(){
 const MONTH_NAMES_ID = {'01':'Januari','02':'Februari','03':'Maret','04':'April','05':'Mei','06':'Juni','07':'Juli','08':'Agustus','09':'September','10':'Oktober','11':'November','12':'Desember'};
 function monthLabel(m){ if(!m) return ''; const [y,mm]=m.split('-'); return (MONTH_NAMES_ID[mm]||mm)+' '+y; }
 function quarterOf(m){ const mm = parseInt(m.split('-')[1],10); return 'Q'+(Math.ceil(mm/3)); }
+const MONTH_SHORT_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+/* Monday-start ISO week bucketing, shared by OPS & EMS weekly comparison tables. */
+function getWeekInfo(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const diffToMonday = (day===0 ? -6 : 1-day);
+  const monday = new Date(d); monday.setDate(d.getDate()+diffToMonday);
+  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const key = monday.toISOString().slice(0,10);
+  let label;
+  if(monday.getMonth()===sunday.getMonth() && monday.getFullYear()===sunday.getFullYear()){
+    label = `${monday.getDate()}–${sunday.getDate()} ${MONTH_SHORT_ID[monday.getMonth()]} ${sunday.getFullYear()}`;
+  } else if(monday.getFullYear()===sunday.getFullYear()){
+    label = `${monday.getDate()} ${MONTH_SHORT_ID[monday.getMonth()]} – ${sunday.getDate()} ${MONTH_SHORT_ID[sunday.getMonth()]} ${sunday.getFullYear()}`;
+  } else {
+    label = `${monday.getDate()} ${MONTH_SHORT_ID[monday.getMonth()]} ${monday.getFullYear()} – ${sunday.getDate()} ${MONTH_SHORT_ID[sunday.getMonth()]} ${sunday.getFullYear()}`;
+  }
+  return {key, label};
+}
+/* Renders a generic week-over-week comparison table. metricDefs: array of
+   {key, label, agg(rec,acc), format(val)} — agg mutates/accumulates acc[key]
+   per record; format renders the final display string. The first metricDef
+   is used to compute the week-over-week % delta badge. */
+function renderWeeklyComparisonTable(recs, tbodyId, metricDefs){
+  const byWeek = {};
+  recs.forEach(r=>{
+    const {key,label} = getWeekInfo(r.date);
+    if(!byWeek[key]) byWeek[key] = {key, label, acc:{}};
+    metricDefs.forEach(m=>m.agg(r, byWeek[key].acc));
+  });
+  const weeks = Object.values(byWeek).sort((a,b)=>a.key.localeCompare(b.key));
+  const body = el(tbodyId);
+  if(weeks.length===0){
+    body.innerHTML = `<tr><td colspan="${metricDefs.length+2}" style="text-align:center;color:var(--muted);padding:20px;">Tidak ada data untuk filter ini.</td></tr>`;
+    return;
+  }
+  const primaryKey = metricDefs[0].key;
+  body.innerHTML = weeks.map((w,i)=>{
+    const prev = weeks[i-1];
+    const cells = metricDefs.map(m=>`<td class="mono">${m.format(w.acc[m.key]||0, w.acc)}</td>`).join('');
+    let deltaHtml = '<span style="color:var(--muted-2)">—</span>';
+    if(prev){
+      const cur = w.acc[primaryKey]||0, prevVal = prev.acc[primaryKey]||0;
+      const diff = cur - prevVal;
+      const pct = prevVal>0 ? (diff/prevVal*100) : (cur>0?100:0);
+      const arrow = diff>0?'▲':diff<0?'▼':'▬';
+      const cls = diff>0?'ok':diff<0?'low':'mid';
+      deltaHtml = `<span class="badge ${cls}">${arrow} ${Math.abs(pct).toFixed(0)}%</span>`;
+    }
+    return `<tr><td>${w.label}</td>${cells}<td>${deltaHtml}</td></tr>`;
+  }).join('');
+}
 function quarterLabel(m){ const [y] = m.split('-'); return quarterOf(m)+' '+y; }
 function fmtNum(n){ return (n||0).toLocaleString('id-ID'); }
 function fmtPct(n){ return (isFinite(n)?n:0).toFixed(1)+'%'; }
@@ -1056,10 +1130,20 @@ function renderOpsDrilldown(recs){
   <tbody>${sorted.map(r=>`<tr><td class="mono">${r.date}</td><td class="mono">${r.session}</td>${opsState.staff?'':`<td>${r.staff}</td>`}${opsState.store?'':`<td style="font-size:12px;color:var(--muted)">${r.store}</td>`}<td>${r.topic||'-'}</td><td class="mono">${r.participants}</td><td class="mono">${r.units}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+function renderOpsWeekly(recs){
+  el('ops_weeklyScope').textContent = opsState.store ? `Store: ${opsState.store}` : 'Semua Store';
+  renderWeeklyComparisonTable(recs, 'ops_weeklyBody', [
+    {key:'sessions', label:'Sesi', agg:(r,a)=>{a.sessions=(a.sessions||0)+1;}, format:v=>fmtNum(v)},
+    {key:'participants', label:'Participant', agg:(r,a)=>{a.participants=(a.participants||0)+r.participants;}, format:v=>fmtNum(v)},
+    {key:'units', label:'Unit Terjual', agg:(r,a)=>{a.units=(a.units||0)+r.units;}, format:v=>fmtNum(v)},
+  ]);
+}
+
 function renderOpsAll(){
   const recs = opsFilteredRecords();
   renderOpsKPI(recs); renderOpsSessionChart(recs); renderOpsTrendChart(recs);
   renderOpsStoreRank(recs); renderOpsStaffTable(recs); renderOpsActionPlan(recs); renderOpsDrilldown(recs);
+  renderOpsWeekly(recs);
 }
 
 el('ops_fMonth').addEventListener('change', e=>{ opsState.month=e.target.value; renderOpsAll(); });
@@ -1188,9 +1272,19 @@ function renderEmsDrilldown(recs){
   <tbody>${sorted.map(r=>`<tr><td class="mono">${r.date}</td><td class="mono">${r.session}</td>${emsState.trainer?'':`<td>${r.trainer}</td>`}${emsState.store?'':`<td style="font-size:12px;color:var(--muted)">${r.store}</td>`}<td>${r.participant||'-'}</td><td>${r.topic||'-'}</td><td class="mono">${r.score!=null?r.score:'-'}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
+function renderEmsWeekly(recs){
+  el('ems_weeklyScope').textContent = emsState.store ? `Store: ${emsState.store}` : 'Semua Store';
+  renderWeeklyComparisonTable(recs, 'ems_weeklyBody', [
+    {key:'submissions', label:'Submission', agg:(r,a)=>{a.submissions=(a.submissions||0)+1;}, format:v=>fmtNum(v)},
+    {key:'scoreSum', label:'Avg Score', agg:(r,a)=>{ if(r.score!=null){ a.scoreSum=(a.scoreSum||0)+r.score; a.scoreN=(a.scoreN||0)+1; } }, format:(v,a)=> a.scoreN ? (a.scoreSum/a.scoreN).toFixed(1) : '0.0'},
+    {key:'staffUnique', label:'Staff Unik', agg:(r,a)=>{ a._staffSet = a._staffSet||new Set(); if(r.participant) a._staffSet.add(r.participant); a.staffUnique=a._staffSet.size; }, format:v=>fmtNum(v)},
+  ]);
+}
+
 function renderEmsAll(){
   const recs = emsFilteredRecords();
   renderEmsKPI(recs); renderEmsStoreRank(recs); renderEmsComments(recs); renderEmsDrilldown(recs);
+  renderEmsWeekly(recs);
 }
 
 el('ems_fMonth').addEventListener('change', e=>{ emsState.month=e.target.value; renderEmsAll(); });
