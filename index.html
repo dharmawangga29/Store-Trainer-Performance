@@ -812,15 +812,29 @@ document.querySelectorAll('.theme-toggle button').forEach(b=>{
 let RAW_OPS, RAW_EMS, RAW_PNR;
 let META = {source:'default', filename:null, uploadedAt:null};
 
+/* Stamped at generation time — lets the app tell a genuinely newer local/cloud
+   upload apart from stale browser cache left over from an older deploy. */
+const DEFAULT_DATA_BUILT_AT = '2026-09-16T09:33:07.903Z';
+
 function loadInitialData(){
   const co = lsGet('ops'), ce = lsGet('ems'), cp = lsGet('pnr'), cm = lsGet('meta');
   if(co && ce && cp){
-    RAW_OPS = JSON.parse(co); RAW_EMS = JSON.parse(ce); RAW_PNR = JSON.parse(cp);
-    META = cm ? JSON.parse(cm) : {source:'upload'};
-  } else {
-    RAW_OPS = DEFAULT_OPS; RAW_EMS = DEFAULT_EMS; RAW_PNR = DEFAULT_PNR;
-    META = {source:'default', filename:null, uploadedAt:null};
+    const cachedMeta = cm ? JSON.parse(cm) : {source:'upload'};
+    const cachedAt = cachedMeta.uploadedAt ? new Date(cachedMeta.uploadedAt).getTime() : 0;
+    const builtAt = new Date(DEFAULT_DATA_BUILT_AT).getTime();
+    if(cachedAt >= builtAt){
+      // Cached data (from a manual upload or a cloud sync) is genuinely newer
+      // than this build's embedded data — keep using it.
+      RAW_OPS = JSON.parse(co); RAW_EMS = JSON.parse(ce); RAW_PNR = JSON.parse(cp);
+      META = cachedMeta;
+      return;
+    }
+    // Cached data predates this build — it's stale leftover from an older
+    // deploy on this browser. Drop it and fall through to the fresh default.
+    lsDel('ops'); lsDel('ems'); lsDel('pnr'); lsDel('meta');
   }
+  RAW_OPS = DEFAULT_OPS; RAW_EMS = DEFAULT_EMS; RAW_PNR = DEFAULT_PNR;
+  META = {source:'default', filename:null, uploadedAt:DEFAULT_DATA_BUILT_AT};
 }
 
 /* ================= Generic helpers ================= */
@@ -1904,6 +1918,14 @@ async function fetchFromCloud(silent){
     const res = await fetch(url, {method:'GET'});
     if(!res.ok) throw new Error('HTTP '+res.status);
     const json = await res.json();
+    const cloudUpdatedAt = json.meta && json.meta.lastUpdated ? new Date(json.meta.lastUpdated).getTime() : 0;
+    const builtAt = new Date(DEFAULT_DATA_BUILT_AT).getTime();
+    if(cloudUpdatedAt > 0 && cloudUpdatedAt < builtAt){
+      // Cloud sheet predates this build's embedded data (nobody has pushed a
+      // newer upload since) — don't let it overwrite the fresher default.
+      updateDataStatus();
+      return false;
+    }
     let applied = false;
     if(json.ops && json.ops.length>1){ const d = parseOpsRows(json.ops); if(d.rows.length){ RAW_OPS = d; lsSet('ops', JSON.stringify(d)); applied = true; } }
     if(json.ems && json.ems.length>1){ const d = parseEmsRows(json.ems); if(d.rows.length){ RAW_EMS = d; lsSet('ems', JSON.stringify(d)); applied = true; } }
