@@ -380,7 +380,6 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
     </div>
     <button class="btn secondary" id="openSettingsBtn">⚙ Settings</button>
     <button class="btn secondary" id="refreshCloudBtn">🔄 Refresh</button>
-    <button class="btn secondary" id="openUploadBtn">⇪ Upload Master File</button>
     <button class="btn secondary" id="logoutBtn">Keluar</button>
   </div>
 </header>
@@ -446,7 +445,18 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
   </div>
   </div>
 
-  <div class="section-title"><span class="n">2</span> Ranking Staff — Paling Sedikit Open Studio</div>
+  <div class="section-title"><span class="n">2</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ops_weeklyScope">Semua Store</span></div>
+  <div class="section-sub">Mengikuti filter Store/Staff/Bulan/Tanggal di atas — kosongkan filter Store untuk melihat total semua toko, atau pilih 1 store untuk melihat tren mingguannya.</div>
+  <div class="panel">
+    <div class="scroll-y">
+      <table id="ops_weeklyTable">
+        <thead><tr><th>Minggu</th><th>Sesi</th><th>Participant</th><th>Unit Terjual</th><th>vs Minggu Lalu</th></tr></thead>
+        <tbody id="ops_weeklyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-title"><span class="n">3</span> Ranking Staff — Paling Sedikit Open Studio</div>
   <div class="section-sub">Staff dengan sesi di bawah rata-rata tim (di store &amp; bulan yang sama) ditandai "Kurang Aktif".</div>
   <div class="panel">
     <div class="scroll-y">
@@ -457,23 +467,12 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
     </div>
   </div>
 
-  <div class="section-title"><span class="n">3</span> Action Plan per Store &amp; Staff Tidak Aktif</div>
+  <div class="section-title"><span class="n">4</span> Action Plan per Store &amp; Staff Tidak Aktif</div>
   <div class="ap-grid" id="ops_actionPlanGrid"></div>
 
-  <div class="section-title"><span class="n">4</span> Drilldown: Pencapaian per Staff / per Store</div>
+  <div class="section-title"><span class="n">5</span> Drilldown: Pencapaian per Staff / per Store</div>
   <div class="section-sub">Pilih Store dan/atau Staff pada filter di atas untuk melihat rincian per sesi.</div>
   <div class="panel"><div id="ops_drilldownArea"><div class="detail-empty">Pilih Store atau Staff pada filter di atas.</div></div></div>
-
-  <div class="section-title"><span class="n">5</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ops_weeklyScope">Semua Store</span></div>
-  <div class="section-sub">Mengikuti filter Store/Staff/Bulan/Tanggal di atas — kosongkan filter Store untuk melihat total semua toko, atau pilih 1 store untuk melihat tren mingguannya.</div>
-  <div class="panel">
-    <div class="scroll-y">
-      <table id="ops_weeklyTable">
-        <thead><tr><th>Minggu</th><th>Sesi</th><th>Participant</th><th>Unit Terjual</th><th>vs Minggu Lalu</th></tr></thead>
-        <tbody id="ops_weeklyBody"></tbody>
-      </table>
-    </div>
-  </div>
 
 </div>
 
@@ -524,15 +523,7 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
     </div>
   </div>
 
-  <div class="section-title"><span class="n">2</span> Comment per Sesi</div>
-  <div class="section-sub">Catatan evaluasi/kendala teknis di setiap sesi latihan (mengikuti filter di atas).</div>
-  <div class="panel"><div class="scroll-y" id="ems_commentList"></div></div>
-
-  <div class="section-title"><span class="n">3</span> Drilldown Trainer / Store</div>
-  <div class="section-sub">Pilih Store dan/atau Trainer pada filter di atas untuk melihat rincian sesi.</div>
-  <div class="panel"><div id="ems_drilldownArea"><div class="detail-empty">Pilih Store atau Trainer pada filter di atas.</div></div></div>
-
-  <div class="section-title"><span class="n">4</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ems_weeklyScope">Semua Store</span></div>
+  <div class="section-title"><span class="n">2</span> Perbandingan Minggu ke Minggu <span style="font-weight:400;font-size:11px;color:var(--muted);" id="ems_weeklyScope">Semua Store</span></div>
   <div class="section-sub">Mengikuti filter Store/Trainer/Bulan/Tanggal di atas — kosongkan filter Store untuk melihat total semua toko, atau pilih 1 store untuk melihat tren mingguannya.</div>
   <div class="panel">
     <div class="scroll-y">
@@ -542,6 +533,14 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
       </table>
     </div>
   </div>
+
+  <div class="section-title"><span class="n">3</span> Comment per Sesi</div>
+  <div class="section-sub">Catatan evaluasi/kendala teknis di setiap sesi latihan (mengikuti filter di atas).</div>
+  <div class="panel"><div class="scroll-y" id="ems_commentList"></div></div>
+
+  <div class="section-title"><span class="n">4</span> Drilldown Trainer / Store</div>
+  <div class="section-sub">Pilih Store dan/atau Trainer pada filter di atas untuk melihat rincian sesi.</div>
+  <div class="panel"><div id="ems_drilldownArea"><div class="detail-empty">Pilih Store atau Trainer pada filter di atas.</div></div></div>
 
 </div>
 
@@ -709,25 +708,6 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
     <div class="modal-actions">
       <button class="btn secondary" id="closeSettingsBtn">Tutup</button>
       <button class="btn" id="saveSettingsBtn">Simpan &amp; Tes Koneksi</button>
-    </div>
-  </div>
-</div>
-
-<!-- Upload modal -->
-<div class="modal-bg" id="uploadModal">
-  <div class="modal">
-    <h2>Upload Master File Baru</h2>
-    <p>Upload file .xlsx terbaru (dengan sheet <b>Open Studio</b>, <b>EMS</b>, <b>PnR</b>) untuk <b>menggantikan</b> seluruh data yang ada saat ini (tidak akumulatif). Jika URL cloud sudah diatur di ⚙ Settings, data juga otomatis dikirim ke Google Sheet bersama agar tim ikut ter-update.</p>
-    <div class="drop-zone" id="dropZone">
-      <div class="icon">📄</div>
-      <p><b>Klik untuk pilih file</b> atau drag &amp; drop .xlsx di sini</p>
-      <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none">
-    </div>
-    <div class="sheet-status" id="sheetStatus"></div>
-    <div class="status-msg" id="uploadStatus"></div>
-    <div class="modal-actions">
-      <button class="btn secondary" id="closeUploadBtn">Batal</button>
-      <button class="btn secondary" id="restoreDefaultBtn">Pakai Data Default</button>
     </div>
   </div>
 </div>
@@ -1682,17 +1662,10 @@ el('tr_resetFilters').addEventListener('click', ()=>{
 });
 
 
-/* ================= Upload master file ================= */
-const modal = el('uploadModal');
-el('openUploadBtn').addEventListener('click', ()=>modal.classList.add('show'));
-el('closeUploadBtn').addEventListener('click', ()=>modal.classList.remove('show'));
-const dropZone = el('dropZone');
-const fileInput = el('fileInput');
-dropZone.addEventListener('click', ()=>fileInput.click());
-dropZone.addEventListener('dragover', e=>{ e.preventDefault(); dropZone.classList.add('drag'); });
-dropZone.addEventListener('dragleave', ()=>dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop', e=>{ e.preventDefault(); dropZone.classList.remove('drag'); if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]); });
-fileInput.addEventListener('change', e=>{ if(e.target.files.length) handleFile(e.target.files[0]); });
+/* ================= Manual file upload removed — dashboard now reads live
+   directly from the connected Google Sheet via cloud sync. Parsing helpers
+   below are kept (used by findCol/extractPnrTargets etc. during cloud
+   fetch) but the local file-picker UI and its wiring have been removed. */
 
 function findCol(headers, keywords){
   const lower = headers.map(h=> (h||'').toString().toLowerCase());
@@ -1995,78 +1968,6 @@ el('refreshCloudBtn').addEventListener('click', async ()=>{
   const ok = await fetchFromCloud(false);
   btn.textContent = ok ? '✅ Ter-update' : '⚠️ Gagal, coba lagi';
   setTimeout(()=>{ btn.textContent = original; }, 1800);
-});
-
-function handleFile(file){
-  const statusEl = el('uploadStatus');
-  const sheetStatusEl = el('sheetStatus');
-  statusEl.className='status-msg show'; statusEl.textContent='Memproses file...';
-  sheetStatusEl.innerHTML = '';
-  const reader = new FileReader();
-  reader.onload = async (e)=>{
-    try{
-      const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
-      const opsData = parseOpsSheet(wb);
-      const emsData = parseEmsSheet(wb);
-      const pnrData = parsePnrSheet(wb);
-      sheetStatusEl.innerHTML = [
-        `<span class="${opsData?'found':'missing'}">Open Studio: ${opsData?opsData.rows.length+' baris':'tidak ditemukan'}</span>`,
-        `<span class="${emsData?'found':'missing'}">EMS: ${emsData?emsData.rows.length+' baris':'tidak ditemukan'}</span>`,
-        `<span class="${pnrData?'found':'missing'}">PnR: ${pnrData?pnrData.rows.length+' baris':'tidak ditemukan'}</span>`,
-      ].join('');
-      if(!opsData && !emsData && !pnrData){
-        throw new Error('Tidak ada sheet yang dikenali (Open Studio / EMS / PnR).');
-      }
-      if(opsData && opsData.rows.length){ RAW_OPS = opsData; lsSet('ops', JSON.stringify(opsData)); }
-      if(emsData && emsData.rows.length){ RAW_EMS = emsData; lsSet('ems', JSON.stringify(emsData)); }
-      if(pnrData && pnrData.rows.length){ RAW_PNR = pnrData; lsSet('pnr', JSON.stringify(pnrData)); }
-      META = {source:'upload', filename:file.name, uploadedAt:new Date().toISOString()};
-      lsSet('meta', JSON.stringify(META));
-
-      rebuildOps(); rebuildEms(); rebuildPnr();
-      populateOpsFilters(); populateEmsFilters(); populatePnrFilters(); populateTrainerFilters();
-      renderOpsAll(); renderEmsAll(); renderPnrAll(); renderTrainerSummary();
-      updateDataStatus();
-
-      const cloudUrl = getCloudUrl();
-      if(cloudUrl){
-        statusEl.className='status-msg show'; statusEl.textContent='Data lokal ter-update. Mengirim ke Google Sheet agar tim ikut ter-update…';
-        const payload = {
-          ops: opsData ? opsData._rawRows : null,
-          ems: emsData ? emsData._rawRows : null,
-          pnr: pnrData ? pnrData._rawRows : null,
-        };
-        const result = await postToCloud(payload);
-        if(result.ok){
-          statusEl.className='status-msg show ok';
-          statusEl.textContent = `Berhasil! Data dari "${file.name}" dikirim ke Google Sheet — tim Anda akan melihat data terbaru saat refresh dashboard.`;
-        } else {
-          statusEl.className='status-msg show err';
-          statusEl.textContent = `Data lokal ter-update, tapi gagal mengirim ke cloud (${result.reason}). Cek koneksi/URL di ⚙ Settings.`;
-        }
-      } else {
-        statusEl.className='status-msg show ok';
-        statusEl.textContent = `Berhasil! Data dari "${file.name}" menggantikan data sebelumnya (mode lokal — set ⚙ Settings untuk sinkron ke tim).`;
-      }
-      setTimeout(()=>modal.classList.remove('show'), 2200);
-    }catch(err){
-      statusEl.className='status-msg show err';
-      statusEl.textContent = 'Gagal memproses file: ' + err.message;
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-el('restoreDefaultBtn').addEventListener('click', ()=>{
-  lsDel('ops'); lsDel('ems'); lsDel('pnr'); lsDel('meta');
-  RAW_OPS = DEFAULT_OPS; RAW_EMS = DEFAULT_EMS; RAW_PNR = DEFAULT_PNR;
-  META = {source:'default', filename:null, uploadedAt:null};
-  rebuildOps(); rebuildEms(); rebuildPnr();
-  populateOpsFilters(); populateEmsFilters(); populatePnrFilters(); populateTrainerFilters();
-  renderOpsAll(); renderEmsAll(); renderPnrAll(); renderTrainerSummary();
-  updateDataStatus();
-  const statusEl = el('uploadStatus');
-  statusEl.className='status-msg show ok'; statusEl.textContent='Kembali ke data default.';
 });
 
 function updateDataStatus(){
