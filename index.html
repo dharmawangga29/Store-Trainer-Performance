@@ -384,6 +384,8 @@ html[data-theme="light"] .trainer-profile-header{ background:linear-gradient(135
   </div>
 </header>
 
+<div id="dataDiagRow" style="display:none; padding:8px 36px; font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); border-bottom:1px solid var(--border); background:var(--panel-2);"></div>
+
 <div class="module-tabs">
   <div class="mtab active" data-mod="ops"><span class="dotm"></span>OPS — Open Studio</div>
   <div class="mtab" data-mod="ems"><span class="dotm"></span>EMS — Coaching</div>
@@ -1732,7 +1734,10 @@ function parseOpsRows(rows){
   const idxPart = findCol(headers, ['total participants','participant']);
   const idxStore = findCol(headers, ['store']);
   const idxTopic = findCol(headers, ['topic']);
-  const idxSession = findCol(headers, ['session']);
+  /* The real form header is spelled "Sessios" (typo, missing the 'n') —
+     match that first, with the correctly-spelled "session" as a fallback
+     in case a future export fixes the typo. */
+  const idxSession = findCol(headers, ['sessios', 'session']);
   const idxUnits = findCol(headers, ['unit']);
   const gStaff=buildDict(), gStore=buildDict(), gTopic=buildDict(), gSess=buildDict();
   const outRows = [];
@@ -1872,6 +1877,10 @@ function extractPnrTargets(rows){
 
 /* ================= Cloud sync (Google Apps Script + Google Sheet) ================= */
 const CLOUD_URL_KEY = 'rph_cloud_url';
+/* Raw-vs-parsed row counts from the most recent successful cloud fetch,
+   kept independent of META so it's always available for display even when
+   the fetched data wasn't applied (e.g. it was older than this build). */
+let LAST_CLOUD_DIAG = null;
 function getCloudUrl(){ try{ return localStorage.getItem(CLOUD_URL_KEY) || ''; }catch(e){ return ''; } }
 function setCloudUrl(url){ try{ localStorage.setItem(CLOUD_URL_KEY, url); }catch(e){} }
 
@@ -1891,6 +1900,17 @@ async function fetchFromCloud(silent){
     const res = await fetch(url, {method:'GET'});
     if(!res.ok) throw new Error('HTTP '+res.status);
     const json = await res.json();
+
+    // Always compute raw-vs-parsed diagnostics from whatever the sheet just
+    // returned — independent of the freshness/apply decision below — so
+    // this is available every time a fetch succeeds, not only when the data
+    // ends up being applied. This is what surfaces silently-dropped rows.
+    const diag = {};
+    if(json.ops && json.ops.length>1){ diag.ops = {raw: json.ops.length-1, parsed: parseOpsRows(json.ops).rows.length}; }
+    if(json.ems && json.ems.length>1){ diag.ems = {raw: json.ems.length-1, parsed: parseEmsRows(json.ems).rows.length}; }
+    if(json.pnr && json.pnr.length>1){ diag.pnr = {raw: json.pnr.length-1, parsed: parsePnrRows(json.pnr).rows.length}; }
+    LAST_CLOUD_DIAG = diag;
+
     const cloudUpdatedAt = json.meta && json.meta.lastUpdated ? new Date(json.meta.lastUpdated).getTime() : 0;
     const builtAt = new Date(DEFAULT_DATA_BUILT_AT).getTime();
     if(cloudUpdatedAt > 0 && cloudUpdatedAt < builtAt){
@@ -1904,7 +1924,7 @@ async function fetchFromCloud(silent){
     if(json.ems && json.ems.length>1){ const d = parseEmsRows(json.ems); if(d.rows.length){ RAW_EMS = d; lsSet('ems', JSON.stringify(d)); applied = true; } }
     if(json.pnr && json.pnr.length>1){ const d = parsePnrRows(json.pnr); d.targets = extractPnrTargets(json.pnr); if(d.rows.length){ RAW_PNR = d; lsSet('pnr', JSON.stringify(d)); applied = true; } }
     if(applied){
-      META = {source:'cloud', filename:null, uploadedAt: json.meta && json.meta.lastUpdated ? json.meta.lastUpdated : new Date().toISOString()};
+      META = {source:'cloud', filename:null, uploadedAt: json.meta && json.meta.lastUpdated ? json.meta.lastUpdated : new Date().toISOString(), diag};
       lsSet('meta', JSON.stringify(META));
       rebuildOps(); rebuildEms(); rebuildPnr();
       populateOpsFilters(); populateEmsFilters(); populatePnrFilters(); populateTrainerFilters();
@@ -1982,6 +2002,23 @@ function updateDataStatus(){
     elx.textContent = `Master data: default`;
   }
   updateCloudStatusPill();
+
+  // Always-visible raw-vs-parsed diagnostic row (not a hover tooltip —
+  // those are too easy to miss). Shown whenever we have a diag reading
+  // from the most recent cloud fetch, regardless of whether that fetch's
+  // data ended up being applied.
+  const diagRow = el('dataDiagRow');
+  const diag = LAST_CLOUD_DIAG;
+  if(diag && (diag.ops || diag.ems || diag.pnr)){
+    const parts = [];
+    if(diag.ops) parts.push(`OPS: ${diag.ops.raw} baris mentah di sheet → ${diag.ops.parsed} baris valid`);
+    if(diag.ems) parts.push(`EMS: ${diag.ems.raw} baris mentah di sheet → ${diag.ems.parsed} baris valid`);
+    if(diag.pnr) parts.push(`PnR: ${diag.pnr.raw} baris mentah di sheet → ${diag.pnr.parsed} baris valid`);
+    diagRow.textContent = parts.join('   |   ');
+    diagRow.style.display = 'block';
+  } else {
+    diagRow.style.display = 'none';
+  }
 }
 
 /* ================= Init ================= */
