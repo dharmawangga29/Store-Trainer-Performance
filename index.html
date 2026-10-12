@@ -1610,9 +1610,12 @@ function pnrMonthlyTargetHours(){
 
 let pnr_barChart, pnr_gaugeChart, pnr_trendChart;
 function renderPnrKPI(recs){
-  const stats = computeTrainerStats(recs).filter(t=>t.hasTarget);
-  const target = stats.reduce((a,t)=>a+t.target,0);
-  const delivered = stats.reduce((a,t)=>a+t.delivered,0);
+  // Target = fixed roster figure straight from the PnR sheet's column V
+  // (all known trainers' target-hours, or just the filtered trainer's) —
+  // independent of which trainers happen to have records in the current
+  // period/date-range filter. Delivered stays scoped to those filters.
+  const target = pnrMonthlyTargetHours();
+  const delivered = recs.filter(r=>r.status==='Delivered').reduce((a,r)=>a+(r.hours||0),0);
   const pct = target>0 ? (delivered/target)*100 : 0;
   const kpis = [
     {val:target.toFixed(1), lbl:'Total Target (Jam)'},
