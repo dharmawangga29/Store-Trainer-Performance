@@ -844,7 +844,7 @@ function showApp(){
    "Ubah Password Trainer" control from trainer sessions. */
 function applyRoleLock(){
   const adminOnly = document.querySelectorAll('.admin-only');
-  adminOnly.forEach(e=>{ e.style.display = currentRole==='admin' ? '' : 'none'; });
+  adminOnly.forEach(e=>{ e.style.display = currentRole==='admin' ? 'block' : 'none'; });
   if(currentRole==='trainer' && currentTrainerStore){
     opsState.store = currentTrainerStore;
     emsState.store = currentTrainerStore;
@@ -1573,12 +1573,12 @@ function pnrAchieveStatus(pct, hasTarget){
   return {cls:'low', label:'Needs Improvement'};
 }
 
-/* Target = trainer's monthly target-hours (from the PnR sheet's reference
-   table) x number of distinct months in scope. Delivered = sum of Hours
-   (column S) for that trainer's Delivered-status rows — not a row count. */
+/* Target = trainer's target-hours exactly as set in the PnR sheet's
+   reference table (column V) — a single fixed figure that does NOT change
+   with the month/date filter in scope. Delivered = sum of Hours (column S)
+   for that trainer's Delivered-status rows within the current filter —
+   not a row count. */
 function computeTrainerStats(recs){
-  const monthsInScope = new Set(recs.map(r=>r.date.slice(0,7)));
-  const monthCount = Math.max(monthsInScope.size, 1);
   const byTrainer = {};
   recs.forEach(r=>{
     const key = normKey(r.trainer);
@@ -1592,7 +1592,7 @@ function computeTrainerStats(recs){
   return Object.values(byTrainer).map(t=>{
     const info = pnr.targets ? pnr.targets[normKey(t.trainer)] : null;
     const hasTarget = !!info;
-    const target = hasTarget ? info.targetHours * monthCount : 0;
+    const target = hasTarget ? info.targetHours : 0;
     const pct = target>0 ? (t.delivered/target)*100 : 0;
     return {trainer:t.trainer, target, delivered:t.delivered, pct, hasTarget};
   });
