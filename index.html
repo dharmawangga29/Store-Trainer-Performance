@@ -1039,25 +1039,33 @@ const MONTH_SHORT_ID = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','O
    point is derived from each record's own date, so records are bucketed
    into the segment covering the month they actually fall in. */
 function getWeekInfo(dateStr){
-  const d = new Date(dateStr+'T00:00:00');
-  const day = d.getDay(); // 0=Sun..6=Sat
+  // Built entirely on Date.UTC() and getUTC*()/setUTCDate() — never the
+  // local-timezone constructor/getters — so this is immune to the
+  // viewer's browser timezone. The old version parsed "YYYY-MM-DDT00:00:00"
+  // as browser-LOCAL time and later called .toISOString() (always UTC) to
+  // read the result back out; for a WIB (UTC+7) viewer that silently
+  // rolled the week's start/end dates back by one day (see the
+  // jakartaDateTimeParts note above for the same class of bug elsewhere).
+  const [yy,mm,dd] = dateStr.split('-').map(Number);
+  const d = new Date(Date.UTC(yy, mm-1, dd));
+  const day = d.getUTCDay(); // 0=Sun..6=Sat
   const diffToMonday = (day===0 ? -6 : 1-day);
-  const monday = new Date(d); monday.setDate(d.getDate()+diffToMonday);
-  const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+  const monday = new Date(d); monday.setUTCDate(d.getUTCDate()+diffToMonday);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate()+6);
   // Clip the Monday-Sunday range to the calendar month of this record's date.
-  const recMonth = d.getMonth(), recYear = d.getFullYear();
-  const firstOfMonth = new Date(recYear, recMonth, 1);
-  const lastOfMonth = new Date(recYear, recMonth+1, 0);
+  const recMonth = d.getUTCMonth(), recYear = d.getUTCFullYear();
+  const firstOfMonth = new Date(Date.UTC(recYear, recMonth, 1));
+  const lastOfMonth = new Date(Date.UTC(recYear, recMonth+1, 0));
   const segStart = monday < firstOfMonth ? firstOfMonth : monday;
   const segEnd = sunday > lastOfMonth ? lastOfMonth : sunday;
   const key = segStart.toISOString().slice(0,10);
   let label;
-  if(segStart.getMonth()===segEnd.getMonth() && segStart.getFullYear()===segEnd.getFullYear()){
-    label = `${segStart.getDate()}–${segEnd.getDate()} ${MONTH_SHORT_ID[segStart.getMonth()]} ${segEnd.getFullYear()}`;
-  } else if(segStart.getFullYear()===segEnd.getFullYear()){
-    label = `${segStart.getDate()} ${MONTH_SHORT_ID[segStart.getMonth()]} – ${segEnd.getDate()} ${MONTH_SHORT_ID[segEnd.getMonth()]} ${segEnd.getFullYear()}`;
+  if(segStart.getUTCMonth()===segEnd.getUTCMonth() && segStart.getUTCFullYear()===segEnd.getUTCFullYear()){
+    label = `${segStart.getUTCDate()}–${segEnd.getUTCDate()} ${MONTH_SHORT_ID[segStart.getUTCMonth()]} ${segEnd.getUTCFullYear()}`;
+  } else if(segStart.getUTCFullYear()===segEnd.getUTCFullYear()){
+    label = `${segStart.getUTCDate()} ${MONTH_SHORT_ID[segStart.getUTCMonth()]} – ${segEnd.getUTCDate()} ${MONTH_SHORT_ID[segEnd.getUTCMonth()]} ${segEnd.getUTCFullYear()}`;
   } else {
-    label = `${segStart.getDate()} ${MONTH_SHORT_ID[segStart.getMonth()]} ${segStart.getFullYear()} – ${segEnd.getDate()} ${MONTH_SHORT_ID[segEnd.getMonth()]} ${segEnd.getFullYear()}`;
+    label = `${segStart.getUTCDate()} ${MONTH_SHORT_ID[segStart.getUTCMonth()]} ${segStart.getUTCFullYear()} – ${segEnd.getUTCDate()} ${MONTH_SHORT_ID[segEnd.getUTCMonth()]} ${segEnd.getUTCFullYear()}`;
   }
   return {key, label, start: segStart.toISOString().slice(0,10), end: segEnd.toISOString().slice(0,10)};
 }
@@ -1896,6 +1904,41 @@ function findCol(headers, keywords){
   for(let i=0;i<lower.length;i++){ for(const kw of keywords){ if(lower[i].includes(kw)) return i; } }
   return -1;
 }
+/* ---- Timezone-safe date handling (Asia/Jakarta, WIB = UTC+7) ----
+   Root cause of several previously-reported "data missing near a date
+   boundary" bugs (e.g. Oct 1 not showing, now Oct 13 showing 0 sessions):
+   the old parsing built a JS Date using the viewer's own BROWSER-local
+   timezone (`new Date(y, m, d)`) or called `.toISOString()` (which always
+   expresses the result in UTC), then sliced the first 10 characters as
+   "the date". Since WIB is UTC+7, any such round-trip rolls local midnight
+   (and anything before ~07:00 WIB) back onto the PREVIOUS calendar day —
+   invisible for mid-month filters, but exactly reproduces "a single day's
+   filter shows 0" and "the last day of the month goes missing".
+   jakartaDateTimeParts() fixes this by either (a) reading a plain
+   "YYYY-MM-DD[THH:mm[:ss]]" string with no timezone marker directly as
+   WIB wall-clock text (exactly what our Apps Script backend emits), or
+   (b) treating a true UTC instant (a Date object, or a string with an
+   explicit Z/offset) as an absolute instant and shifting it by a fixed
+   +7h before reading the calendar day/hour — never relying on the
+   viewer's own browser timezone, which cannot be trusted to be WIB. */
+function jakartaDateTimeParts(v){
+  if(v==null || v==='') return null;
+  if(v instanceof Date){
+    if(isNaN(v.getTime())) return null;
+    const t = new Date(v.getTime()+7*3600*1000);
+    return { date: t.toISOString().slice(0,10), hour: t.getUTCHours() };
+  }
+  const s = v.toString().trim();
+  const naive = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2})?)?$/);
+  if(naive) return { date: naive[1]+'-'+naive[2]+'-'+naive[3], hour: naive[4]!=null ? parseInt(naive[4],10) : 0 };
+  if(/Z$|[+-]\d{2}:?\d{2}$/.test(s)){
+    const d = new Date(s);
+    if(!isNaN(d.getTime())){ const t = new Date(d.getTime()+7*3600*1000); return { date: t.toISOString().slice(0,10), hour: t.getUTCHours() }; }
+  }
+  return null;
+}
+function jakartaDateStr(v){ const p = jakartaDateTimeParts(v); return p ? p.date : null; }
+
 function excelDateToStr(v){
   if(v instanceof Date) return v.toISOString().slice(0,10);
   if(typeof v === 'number'){ const d = new Date(Math.round((v-25569)*86400*1000)); return d.toISOString().slice(0,10); }
@@ -1906,9 +1949,14 @@ function excelDateToStr(v){
     if(yy.length===4){ y = yy.startsWith('00') ? 2000+parseInt(yy.slice(2)) : parseInt(yy); }
     else y = 2000+parseInt(yy);
     const mm = parseInt(m[1]), dd = parseInt(m[2]);
-    const d = new Date(y, mm-1, dd);
-    if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
+    // Validate with a UTC-anchored check (TZ-independent) and build the
+    // string directly from the parsed parts — never derive it from
+    // toISOString() on a locally-constructed Date (see note above).
+    const check = new Date(Date.UTC(y, mm-1, dd));
+    if(!isNaN(check.getTime())) return String(y).padStart(4,'0')+'-'+String(mm).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
   }
+  const jk = jakartaDateStr(s);
+  if(jk) return jk;
   const d2 = new Date(s);
   if(!isNaN(d2.getTime())) return d2.toISOString().slice(0,10);
   return null;
@@ -1930,12 +1978,24 @@ function parseIdDateStr(s){
   const mon = ID_MONTHS[parts[1].toLowerCase()];
   const yyyy = parseInt(parts[2],10);
   if(!mon || isNaN(dd) || isNaN(yyyy)) return null;
-  const d = new Date(yyyy, mon-1, dd);
-  if(isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0,10);
+  // Validate with a UTC-anchored check (TZ-independent) and build the
+  // string directly from the parsed y/m/d — never via toISOString() on a
+  // Date built with the viewer's own local timezone (new Date(y,m,d)),
+  // which silently rolled the date back a day for WIB viewers (see the
+  // jakartaDateTimeParts note above — this was the actual root cause of
+  // "a single day's filter shows 0 sessions" reports).
+  const check = new Date(Date.UTC(yyyy, mon-1, dd));
+  if(isNaN(check.getTime()) || check.getUTCDate()!==dd || check.getUTCMonth()!==mon-1) return null;
+  return String(yyyy).padStart(4,'0')+'-'+String(mon).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
 }
 function parseOpsDateValue(v){
-  if(v instanceof Date) return v.toISOString().slice(0,10);
+  // Try the timezone-safe WIB parser first — handles both a genuine Date
+  // object and the plain "YYYY-MM-DD[THH:mm:ss]" strings our Apps Script
+  // backend emits for the OPS sheet's "Date" column when it's a true
+  // Date-typed cell (happens for some live Form submissions even though
+  // older/manually-entered rows store it as Indonesian text).
+  const jk = jakartaDateStr(v);
+  if(jk) return jk;
   if(typeof v === 'number') return excelDateToStr(v);
   const idParsed = parseIdDateStr(v);
   if(idParsed) return idParsed;
@@ -2001,10 +2061,12 @@ function parseEmsRows(rows){
     const r = rows[i]; if(!r) continue;
     const ts=idxTs>=0?r[idxTs]:null, store=r[idxStore], trainer=r[idxTrainer];
     if(!ts || !store || !trainer) continue;
-    let dateObj = ts instanceof Date ? ts : new Date(ts);
-    if(isNaN(dateObj.getTime())) continue;
-    const dateStr = dateObj.toISOString().slice(0,10);
-    const sessionPart = dateObj.getHours()<15 ? 'Pagi' : 'Siang';
+    // WIB-safe (see jakartaDateTimeParts note) — avoids the previous
+    // toISOString()-based day-shift bug for early-morning submissions.
+    const jp = jakartaDateTimeParts(ts);
+    if(!jp) continue;
+    const dateStr = jp.date;
+    const sessionPart = jp.hour<15 ? 'Pagi' : 'Siang';
     let score = idxScore>=0 ? Number(r[idxScore]) : null;
     if(isNaN(score)) score = null;
     let comment = idxComment>=0 && r[idxComment]!=null ? r[idxComment].toString().trim() : '';
@@ -2048,9 +2110,10 @@ function parsePnrRows(rows){
     const r = rows[i]; if(!r) continue;
     const ts=idxTs>=0?r[idxTs]:null, trainer=r[idxTrainer], status=idxStatus>=0?r[idxStatus]:null;
     if(!ts || !trainer || !status) continue;
-    let dateObj = ts instanceof Date ? ts : new Date(ts);
-    if(isNaN(dateObj.getTime())) continue;
-    const dateStr = dateObj.toISOString().slice(0,10);
+    // WIB-safe (see jakartaDateTimeParts note) — avoids the previous
+    // toISOString()-based day-shift bug for early-morning submissions.
+    const dateStr = jakartaDateStr(ts);
+    if(!dateStr) continue;
     const modv = (idxMandatory>=0 && r[idxMandatory]) ? r[idxMandatory] : ((idxOther>=0 && r[idxOther]) ? r[idxOther] : (idxModules>=0?r[idxModules]:''));
     const safeNum = (v)=>{ const n=Number(v); return isNaN(n)?0:n; };
     let comment = idxComment>=0 && r[idxComment]!=null ? r[idxComment].toString().trim() : '';
